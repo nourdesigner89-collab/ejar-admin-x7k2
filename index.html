@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#12161c"><link rel="icon" href="icon-192.png"><meta name="robots" content="noindex,nofollow"><title>EjarRent — إدارة الاشتراكات</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<style>
+body{font-family:Tahoma,Arial,sans-serif;background:#12161c;color:#eee;margin:0;padding:16px}
+.box{max-width:760px;margin:0 auto}
+h1{font-size:20px} input{width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #444;background:#1b212b;color:#fff;font-size:16px;margin:6px 0}
+button{padding:10px 14px;border-radius:10px;border:0;background:#c9a24d;color:#111;font-weight:700;cursor:pointer;margin:3px}
+button.g{background:#2b3442;color:#eee}
+.card{background:#1b212b;border:1px solid #333;border-radius:12px;padding:12px;margin:10px 0}
+.em{font-size:16px;font-weight:700;direction:ltr;text-align:right;overflow-wrap:anywhere}
+.m{font-size:13px;color:#aab;margin:4px 0}.ok{color:#7ddc8a}.bad{color:#ff8c82}
+#msg{min-height:22px;margin:8px 0}
+</style></head><body><div class="box">
+<h1>إدارة اشتراكات EjarRent</h1>
+<div id="login">
+ <input id="em" type="email" placeholder="بريدك (حساب المطوّر)" autocomplete="username" style="direction:ltr">
+ <input id="pw" type="password" placeholder="كلمة المرور" autocomplete="current-password" style="direction:ltr">
+ <button id="go">دخول</button>
+ <div id="lmsg" style="margin:10px 0;min-height:22px;font-size:14px"></div>
+</div>
+<div id="app" style="display:none">
+ <input id="q" placeholder="ابحث ببريد العميل…" style="direction:ltr">
+ <div><button class="g" id="reload">تحديث القائمة</button> <button class="g" id="out">خروج</button></div>
+ <div id="who" class="m" style="direction:ltr;text-align:right"></div><div id="msg"></div><div id="list"></div>
+</div>
+</div>
+<script>
+const CFG={apiKey:"AIzaSyDivmrpK4g23CtHWdMvTiMQoD6_u4McVN4",authDomain:"ejar-app-99c14.firebaseapp.com",projectId:"ejar-app-99c14",storageBucket:"ejar-app-99c14.firebasestorage.app",messagingSenderId:"400557487479",appId:"1:400557487479:web:2d6e83827f1c43969f9d72"};
+firebase.initializeApp(CFG);
+const auth=firebase.auth(), db=firebase.firestore();
+const $=id=>document.getElementById(id), DAY=864e5;
+let rows=[];
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function say(t,bad){$('msg').className=bad?'bad':'ok';$('msg').textContent=t;}
+function fmt(ms){const d=new Date(ms);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function addDays(base,days){ const d=new Date(base); d.setDate(d.getDate()+days); return d.getTime(); }
+function newExpiry(cur,days){ const start=(typeof cur==='number'&&cur>Date.now())?cur:Date.now(); return addDays(start,days); }
+function draw(){
+  const q=$('q').value.trim().toLowerCase();
+  const list=rows.filter(r=>!q||(r.email||'').toLowerCase().includes(q)||r.id.toLowerCase().includes(q));
+  $('list').innerHTML=list.length?list.map(r=>{
+    const e=r.exp, left=typeof e==='number'?Math.ceil((e-Date.now())/DAY):null;
+    const st=e==null?'<span class="m">بلا تاريخ انتهاء</span>':(left>0?'<span class="ok">ينتهي '+fmt(e)+' · متبقي '+left+' يوم</span>':'<span class="bad">منتهٍ منذ '+(-left)+' يوم ('+fmt(e)+')</span>');
+    return '<div class="card"><div class="em">'+(r.email?esc(r.email):'(بريد غير معروف بعد)')+'</div><div class="m">'+st+'</div><div class="m" style="direction:ltr;text-align:right">'+esc(r.id)+'</div>'
+     +'<button data-d="30" data-id="'+esc(r.id)+'">+ شهر</button><button data-d="90" data-id="'+esc(r.id)+'">+ 3 أشهر</button><button data-d="365" data-id="'+esc(r.id)+'">+ سنة</button></div>';
+  }).join(''):'<div class="m">لا نتائج</div>';
+  document.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>renew(b.dataset.id,+b.dataset.d));
+}
+async function load(){
+  say('جارٍ التحميل…');
+  try{ const s=await db.collection('backups').get(); rows=s.docs.map(d=>{const x=d.data();return {id:d.id,email:x.ownerEmail||'',exp:x.subscriptionExpiresAt==null?null:x.subscriptionExpiresAt};});
+    rows.sort((a,b)=>(a.exp==null?9e15:a.exp)-(b.exp==null?9e15:b.exp)); say('عدد الحسابات: '+rows.length); draw(); }
+  catch(e){ say('تعذّر التحميل: '+(e.code||e.message)+' — وثيقة admins يجب أن يكون اسمها هو UID الظاهر أعلاه تمامًا، وأن تكون القواعد الجديدة منشورة',true); }
+}
+async function renew(id,days){
+  const r=rows.find(x=>x.id===id); if(!r) return;
+  const val=newExpiry(r.exp,days);
+  if(!confirm('تجديد '+(r.email||id)+' حتى '+fmt(val)+' ؟')) return;
+  try{ await db.collection('backups').doc(id).update({subscriptionExpiresAt:val}); r.exp=val; say('تم التجديد حتى '+fmt(val)); draw(); }
+  catch(e){ say('فشل التجديد: '+(e.code||e.message),true); }
+}
+function lsay(t,bad){ $('lmsg').style.color=bad?'#ff8c82':'#7ddc8a'; $('lmsg').textContent=t; }
+$('go').onclick=async()=>{
+  lsay('جارٍ الدخول…');
+  const slow=setTimeout(()=>lsay('الدخول يستغرق وقتًا طويلًا. افتح هذه الصفحة من الحاسوب بمتصفح Chrome، وأوقف دروع Brave إن كنت تستعمله، وتأكد من الإنترنت.',true),12000);
+  try{ try{ await auth.setPersistence(firebase.auth.Auth.Persistence.NONE); }catch(_){}
+    const c=await auth.signInWithEmailAndPassword($('em').value.trim(),$('pw').value); clearTimeout(slow); lsay('تم الدخول، جارٍ فتح القائمة…'); show(c.user); }
+  catch(e){ clearTimeout(slow); lsay('تعذّر الدخول: '+(e.code||e.message)+' — تأكد من البريد وكلمة المرور (كلمة مرور تطبيق EjarRent وليست Gmail)',true); }
+};
+function show(u){ $('login').style.display=u?'none':'block'; $('app').style.display=u?'block':'none'; if(u){ $('who').textContent='الحساب: '+(u.email||'')+'  |  UID: '+u.uid; load(); } }
+$('out').onclick=()=>auth.signOut(); $('reload').onclick=load; $('q').oninput=draw;
+auth.onAuthStateChanged(show);
+window.addEventListener('error',e=>{ try{ lsay('خطأ في الصفحة: '+e.message,true); }catch(_){} });
+</script></body></html>
