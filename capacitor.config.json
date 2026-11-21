@@ -1,0 +1,24 @@
+{
+  "appId": "com.ejar.app",
+  "appName": "EjarRent",
+  "webDir": "www",
+  "backgroundColor": "#0d0f14",
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#0d0f14",
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon",
+      "iconColor": "#d4af37"
+    }
+  },
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "loggingBehavior": "none"
+}
