@@ -45,14 +45,15 @@ function draw(){
   $('list').innerHTML=list.length?list.map(r=>{
     const e=r.exp, left=typeof e==='number'?Math.ceil((e-Date.now())/DAY):null;
     const st=e==null?'<span class="m">بلا تاريخ انتهاء</span>':(left>0?'<span class="ok">ينتهي '+fmt(e)+' · متبقي '+left+' يوم</span>':'<span class="bad">منتهٍ منذ '+(-left)+' يوم ('+fmt(e)+')</span>');
-    return '<div class="card"><div class="em">'+(r.email?esc(r.email):'(بريد غير معروف بعد)')+'</div><div class="m">'+st+'</div><div class="m" style="direction:ltr;text-align:right">'+esc(r.id)+'</div>'
-     +'<button data-d="30" data-id="'+esc(r.id)+'">+ شهر</button><button data-d="90" data-id="'+esc(r.id)+'">+ 3 أشهر</button><button data-d="365" data-id="'+esc(r.id)+'">+ سنة</button></div>';
+    return '<div class="card"><div class="em">'+(r.email?esc(r.email):(r.biz?esc(r.biz)+' · ':'')+'(بريد غير معروف بعد — يظهر عند فتح المالك للتطبيق المحدّث)')+'</div><div class="m">'+st+'</div><div class="m" style="direction:ltr;text-align:right">'+esc(r.id)+'</div>'
+     +'<button data-d="90" data-id="'+esc(r.id)+'">+ 3 أشهر</button><button data-d="180" data-id="'+esc(r.id)+'">+ 6 أشهر</button><button data-d="365" data-id="'+esc(r.id)+'">+ سنة</button><button class="cancelsub" data-cancel="'+esc(r.id)+'" style="background:#7a2a24;color:#fff">إلغاء الاشتراك</button></div>';
   }).join(''):'<div class="m">لا نتائج</div>';
   document.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>renew(b.dataset.id,+b.dataset.d));
+  document.querySelectorAll('[data-cancel]').forEach(b=>b.onclick=()=>cancelSub(b.dataset.cancel));
 }
 async function load(){
   say('جارٍ التحميل…');
-  try{ const s=await db.collection('backups').get(); rows=s.docs.map(d=>{const x=d.data();return {id:d.id,email:x.ownerEmail||'',exp:x.subscriptionExpiresAt==null?null:x.subscriptionExpiresAt};});
+  try{ const s=await db.collection('backups').get(); rows=s.docs.map(d=>{const x=d.data();return {id:d.id,email:x.ownerEmail||'',biz:x.businessName||'',exp:x.subscriptionExpiresAt==null?null:x.subscriptionExpiresAt};});
     rows.sort((a,b)=>(a.exp==null?9e15:a.exp)-(b.exp==null?9e15:b.exp)); say('عدد الحسابات: '+rows.length); draw(); }
   catch(e){ say('تعذّر التحميل: '+(e.code||e.message)+' — وثيقة admins يجب أن يكون اسمها هو UID الظاهر أعلاه تمامًا، وأن تكون القواعد الجديدة منشورة',true); }
 }
@@ -62,6 +63,13 @@ async function renew(id,days){
   if(!confirm('تجديد '+(r.email||id)+' حتى '+fmt(val)+' ؟')) return;
   try{ await db.collection('backups').doc(id).update({subscriptionExpiresAt:val}); r.exp=val; say('تم التجديد حتى '+fmt(val)); draw(); }
   catch(e){ say('فشل التجديد: '+(e.code||e.message),true); }
+}
+async function cancelSub(id){
+  const r=rows.find(x=>x.id===id); if(!r) return;
+  if(!confirm('إلغاء اشتراك '+(r.email||id)+' الآن؟ سيُقفل التطبيق عند هذا الحساب وفريقه فورًا.')) return;
+  const val=Date.now();
+  try{ await db.collection('backups').doc(id).update({subscriptionExpiresAt:val}); r.exp=val; say('تم إلغاء الاشتراك'); draw(); }
+  catch(e){ say('فشل الإلغاء: '+(e.code||e.message),true); }
 }
 function lsay(t,bad){ $('lmsg').style.color=bad?'#ff8c82':'#7ddc8a'; $('lmsg').textContent=t; }
 $('go').onclick=async()=>{
