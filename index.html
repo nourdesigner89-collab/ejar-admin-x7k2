@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#12161c"><link rel="icon" href="icon-192.png"><meta name="robots" content="noindex,nofollow"><title>EjarRent — إدارة الاشتراكات</title>
+<title>EjarRent — إدارة الاشتراكات</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -46,10 +46,11 @@ function draw(){
     const e=r.exp, left=typeof e==='number'?Math.ceil((e-Date.now())/DAY):null;
     const st=e==null?'<span class="m">بلا تاريخ انتهاء</span>':(left>0?'<span class="ok">ينتهي '+fmt(e)+' · متبقي '+left+' يوم</span>':'<span class="bad">منتهٍ منذ '+(-left)+' يوم ('+fmt(e)+')</span>');
     return '<div class="card"><div class="em">'+(r.email?esc(r.email):(r.biz?esc(r.biz)+' · ':'')+'(بريد غير معروف بعد — يظهر عند فتح المالك للتطبيق المحدّث)')+'</div><div class="m">'+st+'</div><div class="m" style="direction:ltr;text-align:right">'+esc(r.id)+'</div>'
-     +'<button data-d="90" data-id="'+esc(r.id)+'">+ 3 أشهر</button><button data-d="180" data-id="'+esc(r.id)+'">+ 6 أشهر</button><button data-d="365" data-id="'+esc(r.id)+'">+ سنة</button><button class="cancelsub" data-cancel="'+esc(r.id)+'" style="background:#7a2a24;color:#fff">إلغاء الاشتراك</button></div>';
+     +'<button data-d="90" data-id="'+esc(r.id)+'">+ 3 أشهر</button><button data-d="180" data-id="'+esc(r.id)+'">+ 6 أشهر</button><button data-d="365" data-id="'+esc(r.id)+'">+ سنة</button><button class="cancelsub" data-cancel="'+esc(r.id)+'" style="background:#7a2a24;color:#fff">إلغاء الاشتراك</button><button data-delacct="'+esc(r.id)+'" style="background:#3a0f0c;color:#ffb4ab;border:1px solid #7a2a24">حذف الحساب</button></div>';
   }).join(''):'<div class="m">لا نتائج</div>';
   document.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>renew(b.dataset.id,+b.dataset.d));
   document.querySelectorAll('[data-cancel]').forEach(b=>b.onclick=()=>cancelSub(b.dataset.cancel));
+  document.querySelectorAll('[data-delacct]').forEach(b=>b.onclick=()=>deleteAcct(b.dataset.delacct));
 }
 async function load(){
   say('جارٍ التحميل…');
@@ -70,6 +71,25 @@ async function cancelSub(id){
   const val=Date.now();
   try{ await db.collection('backups').doc(id).update({subscriptionExpiresAt:val}); r.exp=val; say('تم إلغاء الاشتراك'); draw(); }
   catch(e){ say('فشل الإلغاء: '+(e.code||e.message),true); }
+}
+async function wipeSub(col){ for(let n=0;n<200;n++){ const q=await col.limit(300).get(); if(!q.docs.length) break; const b=db.batch(); q.docs.forEach(d=>b.delete(d.ref)); await b.commit(); if(q.docs.length<300) break; } }
+async function deleteAcct(id){
+  const r=rows.find(x=>x.id===id); if(!r) return;
+  const label=r.email||r.biz||id;
+  if(!confirm('حذف حساب «'+label+'» نهائيًا؟\nسيُحذف اشتراكه وكل بياناته (الحجوزات والوحدات والمصروفات والفريق) ويُطرد من التطبيق فورًا، ولا يمكن التراجع.')) return;
+  const t=prompt('للتأكيد اكتب كلمة: حذف'); if((t||'').trim()!=='حذف'){ say('أُلغي الحذف'); return; }
+  say('جارٍ حذف الحساب…');
+  try{
+    const w=db.collection('backups').doc(id);
+    await db.collection('deleted').doc(id).set({at:Date.now(), by:auth.currentUser.uid, email:r.email||''});   // first: so he cannot start a new trial while we work
+    const ms=await w.collection('members').get();
+    for(const m of ms.docs){ await db.collection('memberships').doc(m.id).delete().catch(()=>{}); }
+    await wipeSub(w.collection('bookings')); await wipeSub(w.collection('audit')); await wipeSub(w.collection('members'));
+    const inv=await db.collection('invites').where('ownerUid','==',id).get();
+    for(const d of inv.docs){ await d.ref.delete().catch(()=>{}); }
+    await w.delete();
+    rows=rows.filter(x=>x.id!==id); say('تم حذف الحساب'); draw();
+  }catch(e){ say('فشل الحذف: '+(e.code||e.message),true); }
 }
 function lsay(t,bad){ $('lmsg').style.color=bad?'#ff8c82':'#7ddc8a'; $('lmsg').textContent=t; }
 $('go').onclick=async()=>{
