@@ -19,12 +19,13 @@ button.g{background:#2b3442;color:#eee}
 <div id="login">
  <input id="em" type="email" placeholder="بريدك (حساب المطوّر)" autocomplete="username" style="direction:ltr">
  <input id="pw" type="password" placeholder="كلمة المرور" autocomplete="current-password" style="direction:ltr">
- <button id="go">دخول</button>
+ <button id="go">دخول</button> <button class="g" id="forgot">نسيت كلمة المرور؟ أرسل رابط إعادة التعيين</button>
  <div id="lmsg" style="margin:10px 0;min-height:22px;font-size:14px"></div>
 </div>
 <div id="app" style="display:none">
  <input id="q" placeholder="ابحث ببريد العميل…" style="direction:ltr">
- <div><button class="g" id="reload">تحديث القائمة</button> <button class="g" id="out">خروج</button></div>
+ <div><button class="g" id="reload">تحديث القائمة</button> <button class="g" id="delbtn">الحسابات المحذوفة (استرجاع)</button> <button class="g" id="out">خروج</button></div>
+ <div id="deleted" style="display:none"></div>
  <div id="who" class="m" style="direction:ltr;text-align:right"></div><div id="msg"></div><div id="list"></div>
 </div>
 </div>
@@ -91,16 +92,39 @@ async function deleteAcct(id){
     rows=rows.filter(x=>x.id!==id); say('تم حذف الحساب'); draw();
   }catch(e){ say('فشل الحذف: '+(e.code||e.message),true); }
 }
+async function loadDeleted(){
+  const box=$('deleted'); box.style.display='block'; box.innerHTML='<div class="m">جارٍ تحميل الحسابات المحذوفة…</div>';
+  try{
+    const s=await db.collection('deleted').get();
+    const items=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.at||0)-(a.at||0));
+    box.innerHTML='<div class="card"><b>الحسابات المحذوفة</b><div class="m">«استرجاع» يسمح للشخص بتسجيل الدخول من جديد بنفس بريده وكلمة مروره. يبدأ حساباً جديداً فارغاً بتجربة 8 أيام، لأن بياناته القديمة حُذفت نهائياً. لتجديد اشتراكه بعد ذلك استخدم القائمة كالمعتاد.</div></div>'
+      +(items.length?items.map(r=>'<div class="card"><div class="em">'+(r.email?esc(r.email):'(بريد غير معروف)')+'</div><div class="m">حُذف في '+(r.at?fmt(r.at):'—')+'</div><div class="m" style="direction:ltr;text-align:right">'+esc(r.id)+'</div><button data-restore="'+esc(r.id)+'" style="background:#1f6b45;color:#fff">استرجاع الحساب</button></div>').join(''):'<div class="m">لا توجد حسابات محذوفة</div>');
+    box.querySelectorAll('[data-restore]').forEach(b=>b.onclick=()=>restoreAcct(b.dataset.restore,items));
+  }catch(e){ box.innerHTML='<div class="m bad">تعذّر تحميل القائمة: '+esc(e.code||e.message)+'</div>'; }
+}
+async function restoreAcct(id,items){
+  const r=(items||[]).find(x=>x.id===id)||{id}; const label=r.email||id;
+  if(!confirm('استرجاع «'+label+'»؟\nسيتمكن من تسجيل الدخول من جديد وبدء حساب جديد فارغ بتجربة 8 أيام.')) return;
+  try{ await db.collection('deleted').doc(id).delete(); say('تم استرجاع «'+label+'». يدخل الآن من صفحة «دخول» في التطبيق بنفس بريده وكلمة مروره.'); loadDeleted(); }
+  catch(e){ say('فشل الاسترجاع: '+(e.code||e.message),true); }
+}
 function lsay(t,bad){ $('lmsg').style.color=bad?'#ff8c82':'#7ddc8a'; $('lmsg').textContent=t; }
 $('go').onclick=async()=>{
   lsay('جارٍ الدخول…');
   const slow=setTimeout(()=>lsay('الدخول يستغرق وقتًا طويلًا. افتح هذه الصفحة من الحاسوب بمتصفح Chrome، وأوقف دروع Brave إن كنت تستعمله، وتأكد من الإنترنت.',true),12000);
   try{ try{ await auth.setPersistence(firebase.auth.Auth.Persistence.NONE); }catch(_){}
     const c=await auth.signInWithEmailAndPassword($('em').value.trim(),$('pw').value); clearTimeout(slow); lsay('تم الدخول، جارٍ فتح القائمة…'); show(c.user); }
-  catch(e){ clearTimeout(slow); lsay('تعذّر الدخول: '+(e.code||e.message)+' — تأكد من البريد وكلمة المرور (كلمة مرور تطبيق EjarRent وليست Gmail)',true); }
+  catch(e){ clearTimeout(slow);
+    const hint = (e.code==='auth/invalid-credential'||e.code==='auth/wrong-password'||e.code==='auth/user-not-found') ? ' — إن كنت متأكداً من كلمة المرور، فقد تكون أُزيلت من الحساب (مثلاً بعد الدخول بجوجل بنفس البريد). اضغط «نسيت كلمة المرور؟» لإرسال رابط يعيدها.' : ' — تأكد من البريد وكلمة المرور (كلمة مرور تطبيق EjarRent وليست Gmail)';
+    lsay('تعذّر الدخول: '+(e.code||e.message)+hint,true); }
+};
+$('forgot').onclick=async()=>{
+  const em=$('em').value.trim(); if(!em){ lsay('اكتب بريدك في الخانة الأولى ثم اضغط الزر.',true); return; }
+  try{ await auth.sendPasswordResetEmail(em); lsay('أُرسل رابط إعادة التعيين إلى '+em+'. افتحه (وتفقّد البريد المزعج) واختر كلمة مرور جديدة ثم ارجع وادخل.'); }
+  catch(e){ lsay('تعذّر الإرسال: '+(e.code||e.message),true); }
 };
 function show(u){ $('login').style.display=u?'none':'block'; $('app').style.display=u?'block':'none'; if(u){ $('who').textContent='الحساب: '+(u.email||'')+'  |  UID: '+u.uid; load(); } }
-$('out').onclick=()=>auth.signOut(); $('reload').onclick=load; $('q').oninput=draw;
+$('delbtn').onclick=loadDeleted; $('out').onclick=()=>auth.signOut(); $('reload').onclick=load; $('q').oninput=draw;
 auth.onAuthStateChanged(show);
 window.addEventListener('error',e=>{ try{ lsay('خطأ في الصفحة: '+e.message,true); }catch(_){} });
 </script></body></html>
