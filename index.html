@@ -24,8 +24,9 @@ button.g{background:#2b3442;color:#eee}
 </div>
 <div id="app" style="display:none">
  <input id="q" placeholder="ابحث ببريد العميل…" style="direction:ltr">
- <div><button class="g" id="reload">تحديث القائمة</button> <button class="g" id="delbtn">الحسابات المحذوفة (استرجاع)</button> <button class="g" id="out">خروج</button></div>
+ <div><button class="g" id="reload">تحديث القائمة</button> <button class="g" id="delbtn">الحسابات المحذوفة (استرجاع)</button> <button class="g" id="updbtn">التحديثات والنسخ</button> <button class="g" id="out">خروج</button></div>
  <div id="deleted" style="display:none"></div>
+ <div id="upd" style="display:none"></div>
  <div id="who" class="m" style="direction:ltr;text-align:right"></div><div id="msg"></div><div id="list"></div>
 </div>
 </div>
@@ -42,11 +43,12 @@ function addDays(base,days){ const d=new Date(base); d.setDate(d.getDate()+days)
 function newExpiry(cur,days){ const start=(typeof cur==='number'&&cur>Date.now())?cur:Date.now(); return addDays(start,days); }
 function draw(){
   const q=$('q').value.trim().toLowerCase();
+  const dupe={}; rows.forEach(r=>{ const k=(r.email||'').toLowerCase(); if(k) dupe[k]=(dupe[k]||0)+1; });
   const list=rows.filter(r=>!q||(r.email||'').toLowerCase().includes(q)||r.id.toLowerCase().includes(q));
   $('list').innerHTML=list.length?list.map(r=>{
     const e=r.exp, left=typeof e==='number'?Math.ceil((e-Date.now())/DAY):null;
     const st=e==null?'<span class="m">بلا تاريخ انتهاء</span>':(left>0?'<span class="ok">ينتهي '+fmt(e)+' · متبقي '+left+' يوم</span>':'<span class="bad">منتهٍ منذ '+(-left)+' يوم ('+fmt(e)+')</span>');
-    return '<div class="card"><div class="em">'+(r.email?esc(r.email):(r.biz?esc(r.biz)+' · ':'')+'(بريد غير معروف بعد — يظهر عند فتح المالك للتطبيق المحدّث)')+'</div><div class="m">'+st+'</div><div class="m" style="direction:ltr;text-align:right">'+esc(r.id)+'</div>'
+    return '<div class="card">'+((r.email&&dupe[r.email.toLowerCase()]>1)?'<div class="m bad">⚠ هذا البريد ظاهر في أكثر من حساب — تحقق من المعرّف قبل أي إجراء</div>':'')+'<div class="em">'+(r.email?esc(r.email):(r.biz?esc(r.biz)+' · ':'')+'(بريد غير معروف بعد — يظهر عند فتح المالك للتطبيق المحدّث)')+'</div><div class="m">'+st+'</div><div class="m" style="direction:ltr;text-align:right">'+esc(r.id)+'</div>'
      +'<button data-d="90" data-id="'+esc(r.id)+'">+ 3 أشهر</button><button data-d="180" data-id="'+esc(r.id)+'">+ 6 أشهر</button><button data-d="365" data-id="'+esc(r.id)+'">+ سنة</button><button class="cancelsub" data-cancel="'+esc(r.id)+'" style="background:#7a2a24;color:#fff">إلغاء الاشتراك</button><button data-delacct="'+esc(r.id)+'" style="background:#3a0f0c;color:#ffb4ab;border:1px solid #7a2a24">حذف الحساب</button></div>';
   }).join(''):'<div class="m">لا نتائج</div>';
   document.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>renew(b.dataset.id,+b.dataset.d));
@@ -62,13 +64,13 @@ async function load(){
 async function renew(id,days){
   const r=rows.find(x=>x.id===id); if(!r) return;
   const val=newExpiry(r.exp,days);
-  if(!confirm('تجديد '+(r.email||id)+' حتى '+fmt(val)+' ؟')) return;
+  if(!confirm('تجديد '+(r.email||id)+'\nالمعرّف: '+id+'\nحتى '+fmt(val)+' ؟')) return;
   try{ await db.collection('backups').doc(id).update({subscriptionExpiresAt:val}); r.exp=val; say('تم التجديد حتى '+fmt(val)); draw(); }
   catch(e){ say('فشل التجديد: '+(e.code||e.message),true); }
 }
 async function cancelSub(id){
   const r=rows.find(x=>x.id===id); if(!r) return;
-  if(!confirm('إلغاء اشتراك '+(r.email||id)+' الآن؟ سيُقفل التطبيق عند هذا الحساب وفريقه فورًا.')) return;
+  if(!confirm('إلغاء اشتراك '+(r.email||id)+'\nالمعرّف: '+id+'\nالآن؟ سيُقفل التطبيق عند هذا الحساب وفريقه فورًا.')) return;
   const val=Date.now();
   try{ await db.collection('backups').doc(id).update({subscriptionExpiresAt:val}); r.exp=val; say('تم إلغاء الاشتراك'); draw(); }
   catch(e){ say('فشل الإلغاء: '+(e.code||e.message),true); }
@@ -77,7 +79,7 @@ async function wipeSub(col){ for(let n=0;n<200;n++){ const q=await col.limit(300
 async function deleteAcct(id){
   const r=rows.find(x=>x.id===id); if(!r) return;
   const label=r.email||r.biz||id;
-  if(!confirm('حذف حساب «'+label+'» نهائيًا؟\nسيُحذف اشتراكه وكل بياناته (الحجوزات والوحدات والمصروفات والفريق) ويُطرد من التطبيق فورًا، ولا يمكن التراجع.')) return;
+  if(!confirm('حذف حساب «'+label+'» نهائيًا؟\nالمعرّف: '+id+'\nسيُحذف اشتراكه وكل بياناته (الحجوزات والوحدات والمصروفات والفريق) ويُطرد من التطبيق فورًا، ولا يمكن التراجع.')) return;
   const t=prompt('للتأكيد اكتب كلمة: حذف'); if((t||'').trim()!=='حذف'){ say('أُلغي الحذف'); return; }
   say('جارٍ حذف الحساب…');
   try{
@@ -104,9 +106,42 @@ async function loadDeleted(){
 }
 async function restoreAcct(id,items){
   const r=(items||[]).find(x=>x.id===id)||{id}; const label=r.email||id;
-  if(!confirm('استرجاع «'+label+'»؟\nسيتمكن من تسجيل الدخول من جديد وبدء حساب جديد فارغ بتجربة 8 أيام.')) return;
+  if(!confirm('استرجاع «'+label+'»؟\nالمعرّف: '+id+'\nسيتمكن من تسجيل الدخول من جديد وبدء حساب جديد فارغ بتجربة 8 أيام.')) return;
   try{ await db.collection('deleted').doc(id).delete(); say('تم استرجاع «'+label+'». يدخل الآن من صفحة «دخول» في التطبيق بنفس بريده وكلمة مروره.'); loadDeleted(); }
   catch(e){ say('فشل الاسترجاع: '+(e.code||e.message),true); }
+}
+
+async function loadUpd(){
+  const box=$('upd'); box.style.display='block'; box.innerHTML='<div class="m">جارٍ التحميل…</div>';
+  try{
+    const [cs,vs]=await Promise.all([db.collection('config').doc('app').get(), db.collection('appVersions').get()]);
+    const c=cs.exists?cs.data():{}; const v=vs.docs.map(d=>({id:d.id,...d.data()}));
+    const maxB=v.reduce((m,x)=>Math.max(m,x.build||0),0);
+    const by={}; v.forEach(x=>{ by[x.build||0]=(by[x.build||0]||0)+1; });
+    const old=v.filter(x=>(x.build||0)<(+c.minBuild||maxB)).sort((a,b)=>(a.build||0)-(b.build||0));
+    const behind=v.filter(x=>(x.build||0)<maxB).sort((a,b)=>(a.build||0)-(b.build||0));
+    const day=x=>x.at&&x.at.toMillis?fmt(x.at.toMillis()):'—';
+    box.innerHTML='<div class="card"><b>قفل التحديث</b><div class="m">أي نسخة رقمها أقل من «الحد الأدنى» تظهر لصاحبها شاشة «يجب تحديث التطبيق» ولا تعمل حتى يحدّث. اتركه فارغًا أو صفرًا لعدم القفل. الحد الحالي: <b>'+(c.minBuild==null?'غير مضبوط':esc(c.minBuild))+'</b></div>'
+     +'<input id="ub" type="number" placeholder="الحد الأدنى لرقم النسخة (مثلاً 30)" value="'+(c.minBuild==null?'':esc(c.minBuild))+'" style="direction:ltr">'
+     +'<input id="uu" placeholder="رابط التحديث (https://...) — يمكن تركه فارغًا الآن" value="'+esc(c.updateUrl||'')+'" style="direction:ltr">'
+     +'<input id="um" placeholder="رسالة مخصصة (اختياري)" value="'+esc(c.message||'')+'">'
+     +'<button id="usave">حفظ</button> <button class="g" id="uoff">إيقاف القفل</button></div>'
+     +'<div class="card"><b>النسخ عند المشتركين</b><div class="m">أعلى نسخة مسجّلة: '+maxB+' · عدد الحسابات التي أبلغت: '+v.length+'</div><div class="m">'
+     +Object.keys(by).sort((a,b)=>b-a).map(k=>'النسخة '+k+': <b>'+by[k]+'</b>').join(' · ')+'</div>'
+     +'<div class="m">لا يظهر هنا من لم يفتح التطبيق بعد التحديث الذي يرسل النسخة.</div></div>'
+     +'<div class="card"><b>حسابات على نسخة أقدم من الأعلى ('+behind.length+')</b>'
+     +(behind.length?behind.map(x=>'<div class="m"><span class="em" style="font-size:14px">'+esc(x.email||x.id)+'</span> · نسخة '+(x.build||'؟')+' · آخر ظهور '+day(x)+'</div>').join(''):'<div class="m ok">الجميع على أحدث نسخة</div>')+'</div>';
+    $('usave').onclick=()=>saveUpd(maxB,v.length); $('uoff').onclick=()=>saveUpd(0,v.length,true);
+  }catch(e){ box.innerHTML='<div class="m bad">تعذّر التحميل: '+esc(e.code||e.message)+' — انشر قواعد Firestore الجديدة (فيها config و appVersions).</div>'; }
+}
+async function saveUpd(maxB,count,off){
+  const mb=off?0:parseInt($('ub').value,10); const url=$('uu').value.trim(), msg=$('um').value.trim();
+  if(!off && !(mb>=0)){ say('اكتب رقمًا صحيحًا',true); return; }
+  if(url && !/^https:\/\//i.test(url)){ say('الرابط يجب أن يبدأ بـ https://',true); return; }
+  if(mb>maxB && count>0 && !confirm('الرقم '+mb+' أعلى من أعلى نسخة مسجّلة ('+maxB+'). سيُقفل التطبيق عند الجميع حتى تصدر نسخة بهذا الرقم. متأكد؟')) return;
+  if(mb>0 && !confirm('سيُقفل كل من نسخته أقل من '+mb+'. متابعة؟')) return;
+  try{ await db.collection('config').doc('app').set({minBuild:mb,updateUrl:url,message:msg,at:Date.now(),by:auth.currentUser.uid}); say(off||!mb?'أُوقف القفل':'تم الحفظ — القفل ساري على النسخ الأقدم من '+mb); loadUpd(); }
+  catch(e){ say('فشل الحفظ: '+(e.code||e.message),true); }
 }
 function lsay(t,bad){ $('lmsg').style.color=bad?'#ff8c82':'#7ddc8a'; $('lmsg').textContent=t; }
 $('go').onclick=async()=>{
@@ -124,7 +159,7 @@ $('forgot').onclick=async()=>{
   catch(e){ lsay('تعذّر الإرسال: '+(e.code||e.message),true); }
 };
 function show(u){ $('login').style.display=u?'none':'block'; $('app').style.display=u?'block':'none'; if(u){ $('who').textContent='الحساب: '+(u.email||'')+'  |  UID: '+u.uid; load(); } }
-$('delbtn').onclick=loadDeleted; $('out').onclick=()=>auth.signOut(); $('reload').onclick=load; $('q').oninput=draw;
+$('delbtn').onclick=loadDeleted; $('updbtn').onclick=loadUpd; $('out').onclick=()=>auth.signOut(); $('reload').onclick=load; $('q').oninput=draw;
 auth.onAuthStateChanged(show);
 window.addEventListener('error',e=>{ try{ lsay('خطأ في الصفحة: '+e.message,true); }catch(_){} });
 </script></body></html>
