@@ -35,12 +35,13 @@ const CFG={apiKey:"AIzaSyDivmrpK4g23CtHWdMvTiMQoD6_u4McVN4",authDomain:"ejar-app
 firebase.initializeApp(CFG);
 const auth=firebase.auth(), db=firebase.firestore();
 const $=id=>document.getElementById(id), DAY=864e5;
-let rows=[];
+let rows=[], vmap={};
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function say(t,bad){$('msg').className=bad?'bad':'ok';$('msg').textContent=t;}
 function fmt(ms){const d=new Date(ms);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function addDays(base,days){ const d=new Date(base); d.setDate(d.getDate()+days); return d.getTime(); }
 function newExpiry(cur,days){ const start=(typeof cur==='number'&&cur>Date.now())?cur:Date.now(); return addDays(start,days); }
+function verTxt(id){ const v=vmap[id]; if(!v||!v.build) return '<span class="bad">النسخة: غير معروفة (نسخة قديمة أو لم يفتح التطبيق بعد التحديث)</span>'; return 'النسخة: <b>'+esc(v.build)+'</b>'+(v.platform?' · '+esc(v.platform):'')+(v.at&&v.at.toMillis?' · آخر ظهور '+fmt(v.at.toMillis()):''); }
 function draw(){
   const q=$('q').value.trim().toLowerCase();
   const dupe={}; rows.forEach(r=>{ const k=(r.email||'').toLowerCase(); if(k) dupe[k]=(dupe[k]||0)+1; });
@@ -48,7 +49,7 @@ function draw(){
   $('list').innerHTML=list.length?list.map(r=>{
     const e=r.exp, left=typeof e==='number'?Math.ceil((e-Date.now())/DAY):null;
     const st=e==null?'<span class="m">بلا تاريخ انتهاء</span>':(left>0?'<span class="ok">ينتهي '+fmt(e)+' · متبقي '+left+' يوم</span>':'<span class="bad">منتهٍ منذ '+(-left)+' يوم ('+fmt(e)+')</span>');
-    return '<div class="card">'+((r.email&&dupe[r.email.toLowerCase()]>1)?'<div class="m bad">⚠ هذا البريد ظاهر في أكثر من حساب — تحقق من المعرّف قبل أي إجراء</div>':'')+'<div class="em">'+(r.email?esc(r.email):(r.biz?esc(r.biz)+' · ':'')+'(بريد غير معروف بعد — يظهر عند فتح المالك للتطبيق المحدّث)')+'</div><div class="m">'+st+'</div><div class="m" style="direction:ltr;text-align:right">'+esc(r.id)+'</div>'
+    return '<div class="card">'+((r.email&&dupe[r.email.toLowerCase()]>1)?'<div class="m bad">⚠ هذا البريد ظاهر في أكثر من حساب — تحقق من المعرّف قبل أي إجراء</div>':'')+'<div class="em">'+(r.email?esc(r.email):(r.biz?esc(r.biz)+' · ':'')+'(بريد غير معروف بعد — يظهر عند فتح المالك للتطبيق المحدّث)')+'</div><div class="m">'+st+'</div><div class="m">'+verTxt(r.id)+'</div><div class="m" style="direction:ltr;text-align:right">'+esc(r.id)+'</div>'
      +'<button data-d="90" data-id="'+esc(r.id)+'">+ 3 أشهر</button><button data-d="180" data-id="'+esc(r.id)+'">+ 6 أشهر</button><button data-d="365" data-id="'+esc(r.id)+'">+ سنة</button><button class="cancelsub" data-cancel="'+esc(r.id)+'" style="background:#7a2a24;color:#fff">إلغاء الاشتراك</button><button data-delacct="'+esc(r.id)+'" style="background:#3a0f0c;color:#ffb4ab;border:1px solid #7a2a24">حذف الحساب</button></div>';
   }).join(''):'<div class="m">لا نتائج</div>';
   document.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>renew(b.dataset.id,+b.dataset.d));
@@ -57,7 +58,8 @@ function draw(){
 }
 async function load(){
   say('جارٍ التحميل…');
-  try{ const s=await db.collection('backups').get(); rows=s.docs.map(d=>{const x=d.data();return {id:d.id,email:x.ownerEmail||'',biz:x.businessName||'',exp:x.subscriptionExpiresAt==null?null:x.subscriptionExpiresAt};});
+  try{ vmap={}; try{ (await db.collection('appVersions').get()).docs.forEach(d=>{ vmap[d.id]=d.data(); }); }catch(_){}
+    const s=await db.collection('backups').get(); rows=s.docs.map(d=>{const x=d.data();return {id:d.id,email:x.ownerEmail||'',biz:x.businessName||'',exp:x.subscriptionExpiresAt==null?null:x.subscriptionExpiresAt};});
     rows.sort((a,b)=>(a.exp==null?9e15:a.exp)-(b.exp==null?9e15:b.exp)); say('عدد الحسابات: '+rows.length); draw(); }
   catch(e){ say('تعذّر التحميل: '+(e.code||e.message)+' — وثيقة admins يجب أن يكون اسمها هو UID الظاهر أعلاه تمامًا، وأن تكون القواعد الجديدة منشورة',true); }
 }
@@ -91,6 +93,7 @@ async function deleteAcct(id){
     const inv=await db.collection('invites').where('ownerUid','==',id).get();
     for(const d of inv.docs){ await d.ref.delete().catch(()=>{}); }
     await w.delete();
+    await db.collection('appVersions').doc(id).delete().catch(()=>{});
     rows=rows.filter(x=>x.id!==id); say('تم حذف الحساب'); draw();
   }catch(e){ say('فشل الحذف: '+(e.code||e.message),true); }
 }
