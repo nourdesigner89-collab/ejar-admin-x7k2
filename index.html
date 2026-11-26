@@ -129,11 +129,11 @@ async function loadUpd(){
      +'<input id="uu" placeholder="رابط التحديث (https://...) — يمكن تركه فارغًا الآن" value="'+esc(c.updateUrl||'')+'" style="direction:ltr">'
      +'<input id="um" placeholder="رسالة مخصصة (اختياري)" value="'+esc(c.message||'')+'">'
      +'<button id="usave">حفظ</button> <button class="g" id="uoff">إيقاف القفل</button></div>'
-     +'<div class="card"><b>النسخ عند المشتركين</b><div class="m">أعلى نسخة مسجّلة: '+maxB+' · عدد الحسابات التي أبلغت: '+v.length+'</div><div class="m">'
-     +Object.keys(by).sort((a,b)=>b-a).map(k=>'النسخة '+k+': <b>'+by[k]+'</b>').join(' · ')+'</div>'
+     +'<div class="card"><b>النسخ عند المشتركين</b><div class="m">أعلى نسخة مسجّلة: '+esc(maxB)+' · عدد الحسابات التي أبلغت: '+v.length+'</div><div class="m">'
+     +Object.keys(by).sort((a,b)=>b-a).map(k=>'النسخة '+esc(k)+': <b>'+esc(by[k])+'</b>').join(' · ')+'</div>'
      +'<div class="m">لا يظهر هنا من لم يفتح التطبيق بعد التحديث الذي يرسل النسخة.</div></div>'
      +'<div class="card"><b>حسابات على نسخة أقدم من الأعلى ('+behind.length+')</b>'
-     +(behind.length?behind.map(x=>'<div class="m"><span class="em" style="font-size:14px">'+esc(x.email||x.id)+'</span> · نسخة '+(x.build||'؟')+' · آخر ظهور '+day(x)+'</div>').join(''):'<div class="m ok">الجميع على أحدث نسخة</div>')+'</div>';
+     +(behind.length?behind.map(x=>'<div class="m"><span class="em" style="font-size:14px">'+esc(x.email||x.id)+'</span> · نسخة '+esc(x.build||'؟')+' · آخر ظهور '+day(x)+'</div>').join(''):'<div class="m ok">الجميع على أحدث نسخة</div>')+'</div>';
     $('usave').onclick=()=>saveUpd(maxB,v.length); $('uoff').onclick=()=>saveUpd(0,v.length,true);
   }catch(e){ box.innerHTML='<div class="m bad">تعذّر التحميل: '+esc(e.code||e.message)+' — انشر قواعد Firestore الجديدة (فيها config و appVersions).</div>'; }
 }
