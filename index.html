@@ -12,19 +12,29 @@ button{padding:10px 14px;border-radius:10px;border:0;background:#c9a24d;color:#1
 button.g{background:#2b3442;color:#eee}
 .card{background:#1b212b;border:1px solid #333;border-radius:12px;padding:12px;margin:10px 0}
 .em{font-size:16px;font-weight:700;direction:ltr;text-align:right;overflow-wrap:anywhere}
-.m{font-size:13px;color:#aab;margin:4px 0}.ok{color:#7ddc8a}.bad{color:#ff8c82}
+.m{font-size:13px;color:#aab;margin:4px 0}
+.sumrow{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.sumc{flex:1;min-width:92px;background:#1b212b;border:1px solid #333;border-radius:12px;padding:8px 10px;cursor:pointer;text-align:center}
+.sumc b{display:block;font-size:22px}.sumc span{font-size:12px;color:#aab}.sumc.on{border-color:#c9a24d;background:#262a22}
+.note{background:#242016;border:1px dashed #6b5a2a;border-radius:8px;padding:6px 8px;font-size:13px;margin:6px 0;color:#e8cd7a;white-space:pre-wrap;overflow-wrap:anywhere}
+.lg{text-align:center;margin:18px 0 8px}.lg .roof{width:64px;height:40px}.lg h1{margin:6px 0 2px;font-size:24px;color:#e8cd7a}.lg p{margin:0;color:#aab;font-size:13px}
+.pwrap{position:relative}.pwrap button{position:absolute;left:6px;top:10px;margin:0;padding:6px 10px;background:#2b3442;color:#eee;font-weight:400}
+#login{max-width:420px;margin:0 auto;background:#161b23;border:1px solid #2b3442;border-radius:16px;padding:16px}
+#login #go{width:100%;padding:13px;font-size:16px;margin:8px 0}
+#pw{padding-left:78px!important}#login{text-align:center}#login input{text-align:right}.ok{color:#7ddc8a}.bad{color:#ff8c82}
 #msg{min-height:22px;margin:8px 0}
 </style></head><body><div class="box">
-<h1>إدارة اشتراكات EjarRent</h1>
 <div id="login">
- <input id="em" type="email" placeholder="بريدك (حساب المطوّر)" autocomplete="username" style="direction:ltr">
- <input id="pw" type="password" placeholder="كلمة المرور" autocomplete="current-password" style="direction:ltr">
- <button id="go">دخول</button> <button class="g" id="forgot">نسيت كلمة المرور؟ أرسل رابط إعادة التعيين</button>
+ <div class="lg"><svg class="roof" viewBox="0 0 120 70"><polygon points="4,60 60,8 116,60 104,60 60,22 16,60" fill="#fff"/></svg><h1>EjarRent</h1><p>لوحة إدارة الاشتراكات</p></div>
+ <input id="em" type="email" placeholder="بريد حساب المطوّر" autocomplete="username" style="direction:ltr">
+ <div class="pwrap"><input id="pw" type="password" placeholder="كلمة المرور" autocomplete="current-password" style="direction:ltr"><button type="button" class="g" id="showpw">إظهار</button></div>
+ <button id="go">دخول</button><br><button class="g" id="forgot" style="font-size:13px">نسيت كلمة المرور؟ أرسل رابط إعادة التعيين</button>
  <div id="lmsg" style="margin:10px 0;min-height:22px;font-size:14px"></div>
 </div>
 <div id="app" style="display:none">
- <input id="q" placeholder="ابحث ببريد العميل…" style="direction:ltr">
- <div><button class="g" id="reload">تحديث القائمة</button> <button class="g" id="delbtn">الحسابات المحذوفة (استرجاع)</button> <button class="g" id="updbtn">التحديثات والنسخ</button> <button class="g" id="out">خروج</button></div>
+ <h1>إدارة اشتراكات EjarRent</h1>
+ <div class="sumrow" id="sum"></div>
+ <input id="q" placeholder="ابحث ببريد العميل أو اسم نشاطه أو ملاحظتك…" style="direction:ltr">
+ <div><button class="g" id="csv">تصدير Excel</button> <button class="g" id="reload">تحديث القائمة</button> <button class="g" id="delbtn">الحسابات المحذوفة (استرجاع)</button> <button class="g" id="updbtn">التحديثات والنسخ</button> <button class="g" id="out">خروج</button></div>
  <div id="deleted" style="display:none"></div>
  <div id="upd" style="display:none"></div>
  <div id="who" class="m" style="direction:ltr;text-align:right"></div><div id="msg"></div><div id="list"></div>
@@ -35,30 +45,53 @@ const CFG={apiKey:"AIzaSyDivmrpK4g23CtHWdMvTiMQoD6_u4McVN4",authDomain:"ejar-app
 firebase.initializeApp(CFG);
 const auth=firebase.auth(), db=firebase.firestore();
 const $=id=>document.getElementById(id), DAY=864e5;
-let rows=[], vmap={};
+let rows=[], vmap={}, meta={}, flt='all';
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function say(t,bad){$('msg').className=bad?'bad':'ok';$('msg').textContent=t;}
 function fmt(ms){const d=new Date(ms);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function addDays(base,days){ const d=new Date(base); d.setDate(d.getDate()+days); return d.getTime(); }
 function newExpiry(cur,days){ const start=(typeof cur==='number'&&cur>Date.now())?cur:Date.now(); return addDays(start,days); }
 function verTxt(id){ const v=vmap[id]; if(!v||!v.build) return '<span class="bad">النسخة: غير معروفة (نسخة قديمة أو لم يفتح التطبيق بعد التحديث)</span>'; return 'النسخة: <b>'+esc(v.build)+'</b>'+(v.platform?' · '+esc(v.platform):'')+(v.at&&v.at.toMillis?' · آخر ظهور '+fmt(v.at.toMillis()):''); }
+function noteHtml(id){ const m=meta[id]; if(!m) return ''; let h=''; if(m.note) h+='<div class="note">📝 '+esc(m.note)+'</div>'; const l=(m.log||[]).slice(-1)[0]; if(l) h+='<div class="m">آخر عملية: '+esc(l.t)+' · '+fmt(l.at)+'</div>'; return h; }
+async function saveMeta(id,patch){ const cur=meta[id]||{}; const nx=Object.assign({},cur,patch); if(nx.log&&nx.log.length>40) nx.log=nx.log.slice(-40); await db.collection('adminMeta').doc(id).set({note:String(nx.note||'').slice(0,500),log:(nx.log||[]).map(x=>({at:+x.at||0,t:String(x.t||'').slice(0,60)}))}); meta[id]=nx; }
+async function logOp(id,t){ try{ await saveMeta(id,{log:((meta[id]&&meta[id].log)||[]).concat([{at:Date.now(),t}])}); }catch(e){} }
+async function editNote(id){ const r=rows.find(x=>x.id===id)||{}; const v=prompt('ملاحظة عن '+(r.email||id)+' (رقمه، متى دفع، المبلغ…) — اتركها فارغة للمسح:',(meta[id]&&meta[id].note)||''); if(v===null) return; try{ await saveMeta(id,{note:v.trim().slice(0,500)}); say('تم حفظ الملاحظة'); draw(); }catch(e){ say('تعذّر الحفظ: '+(e.code||e.message)+' — انشر قواعد Firestore الجديدة (فيها adminMeta).',true); } }
+function showHist(id){ const l=((meta[id]&&meta[id].log)||[]).slice().reverse(); alert(l.length?l.map(x=>fmt(x.at)+' — '+x.t).join('\n'):'لا توجد عمليات مسجّلة بعد'); }
+async function copyText(t){ try{ await navigator.clipboard.writeText(t); return true; }catch(_){ const a=document.createElement('textarea'); a.value=t; document.body.appendChild(a); a.select(); let ok=false; try{ ok=document.execCommand('copy'); }catch(__){} a.remove(); return ok; } }
+async function copyMsg(id){ const r=rows.find(x=>x.id===id); if(!r) return; const e=r.exp; const left=typeof e==='number'?Math.ceil((e-Date.now())/DAY):null;
+  const t=left==null?'مرحباً، اشتراكك في EjarRent فعّال.':(left>0?'مرحباً، اشتراكك في EjarRent ينتهي بتاريخ '+fmt(e)+' (متبقي '+left+' يوم). للتجديد تواصل معنا على ejarrent89@gmail.com':'مرحباً، انتهى اشتراكك في EjarRent بتاريخ '+fmt(e)+'. للتجديد وإعادة تشغيل التطبيق تواصل معنا على ejarrent89@gmail.com');
+  say((await copyText(t))?'تم نسخ الرسالة — الصقها في واتساب':'تعذّر النسخ، انسخ يدوياً: '+t, false); }
+function csvCell(v){ let t=String(v==null?'':v); if(/^[=+\-@\t\r]/.test(t)) t="'"+t; return '"'+t.replace(/"/g,'""')+'"'; }
+function exportCsv(){ const head=['البريد','النشاط','ينتهي في','الأيام المتبقية','الحالة','رقم النسخة','المنصة','آخر ظهور','ملاحظة','المعرّف'];
+  const lines=[head].concat(rows.map(r=>{ const e=r.exp, left=typeof e==='number'?Math.ceil((e-Date.now())/DAY):''; const v=vmap[r.id]||{}; return [r.email,r.biz,e==null?'':fmt(e),left,e==null?'بلا تاريخ':(left>0?'فعّال':'منتهٍ'),v.build||'',v.platform||'',v.at&&v.at.toMillis?fmt(v.at.toMillis()):'',(meta[r.id]&&meta[r.id].note)||'',r.id]; }));
+  const blob=new Blob(['\ufeff'+lines.map(l=>l.map(csvCell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='ejarrent-subscribers-'+fmt(Date.now())+'.csv'; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500); say('تم تنزيل ملف Excel (CSV)'); }
 function draw(){
   const q=$('q').value.trim().toLowerCase();
   const dupe={}; rows.forEach(r=>{ const k=(r.email||'').toLowerCase(); if(k) dupe[k]=(dupe[k]||0)+1; });
-  const list=rows.filter(r=>!q||(r.email||'').toLowerCase().includes(q)||r.id.toLowerCase().includes(q));
+  const maxB=Object.values(vmap).reduce((m,x)=>Math.max(m,x.build||0),0);
+  const cls=r=>{ const e=r.exp; if(e==null) return 'none'; const l=Math.ceil((e-Date.now())/DAY); return l<=0?'expired':(l<=7?'soon':'active'); };
+  const isOld=r=>{ const v=vmap[r.id]; return !v||!v.build||v.build<maxB; };
+  const cnt={all:rows.length,active:0,soon:0,expired:0,old:0}; rows.forEach(r=>{ const c=cls(r); if(c==='active'||c==='soon') cnt.active++; if(c==='soon') cnt.soon++; if(c==='expired') cnt.expired++; if(isOld(r)) cnt.old++; });
+  $('sum').innerHTML=[['all','الكل'],['active','فعّال'],['soon','ينتهي خلال 7 أيام'],['expired','منتهٍ'],['old','نسخة قديمة/مجهولة']].map(([k,l])=>'<div class="sumc'+(flt===k?' on':'')+'" data-f="'+k+'"><b>'+cnt[k]+'</b><span>'+l+'</span></div>').join('');
+  $('sum').querySelectorAll('[data-f]').forEach(d=>d.onclick=()=>{ flt=d.dataset.f; draw(); });
+  const fok=r=>flt==='all'||(flt==='active'&&(cls(r)==='active'||cls(r)==='soon'))||(flt==='soon'&&cls(r)==='soon')||(flt==='expired'&&cls(r)==='expired')||(flt==='old'&&isOld(r));
+  const list=rows.filter(r=>fok(r)&&(!q||(r.email||'').toLowerCase().includes(q)||(r.biz||'').toLowerCase().includes(q)||r.id.toLowerCase().includes(q)||((meta[r.id]&&meta[r.id].note)||'').toLowerCase().includes(q)));
   $('list').innerHTML=list.length?list.map(r=>{
     const e=r.exp, left=typeof e==='number'?Math.ceil((e-Date.now())/DAY):null;
     const st=e==null?'<span class="m">بلا تاريخ انتهاء</span>':(left>0?'<span class="ok">ينتهي '+fmt(e)+' · متبقي '+left+' يوم</span>':'<span class="bad">منتهٍ منذ '+(-left)+' يوم ('+fmt(e)+')</span>');
-    return '<div class="card">'+((r.email&&dupe[r.email.toLowerCase()]>1)?'<div class="m bad">⚠ هذا البريد ظاهر في أكثر من حساب — تحقق من المعرّف قبل أي إجراء</div>':'')+'<div class="em">'+(r.email?esc(r.email):(r.biz?esc(r.biz)+' · ':'')+'(بريد غير معروف بعد — يظهر عند فتح المالك للتطبيق المحدّث)')+'</div><div class="m">'+st+'</div><div class="m">'+verTxt(r.id)+'</div><div class="m" style="direction:ltr;text-align:right">'+esc(r.id)+'</div>'
-     +'<button data-d="90" data-id="'+esc(r.id)+'">+ 3 أشهر</button><button data-d="180" data-id="'+esc(r.id)+'">+ 6 أشهر</button><button data-d="365" data-id="'+esc(r.id)+'">+ سنة</button><button class="cancelsub" data-cancel="'+esc(r.id)+'" style="background:#7a2a24;color:#fff">إلغاء الاشتراك</button><button data-delacct="'+esc(r.id)+'" style="background:#3a0f0c;color:#ffb4ab;border:1px solid #7a2a24">حذف الحساب</button></div>';
+    return '<div class="card">'+((r.email&&dupe[r.email.toLowerCase()]>1)?'<div class="m bad">⚠ هذا البريد ظاهر في أكثر من حساب — تحقق من المعرّف قبل أي إجراء</div>':'')+'<div class="em">'+(r.email?esc(r.email):(r.biz?esc(r.biz)+' · ':'')+'(بريد غير معروف بعد — يظهر عند فتح المالك للتطبيق المحدّث)')+'</div><div class="m">'+st+'</div><div class="m">'+verTxt(r.id)+'</div><div class="m" style="direction:ltr;text-align:right">'+esc(r.id)+'</div>'+noteHtml(r.id)
+     +'<button data-d="90" data-id="'+esc(r.id)+'">+ 3 أشهر</button><button data-d="180" data-id="'+esc(r.id)+'">+ 6 أشهر</button><button data-d="365" data-id="'+esc(r.id)+'">+ سنة</button><button class="g" data-note="'+esc(r.id)+'">ملاحظة</button><button class="g" data-msg="'+esc(r.id)+'">نسخ رسالة تجديد</button><button class="g" data-hist="'+esc(r.id)+'">السجل</button><button class="cancelsub" data-cancel="'+esc(r.id)+'" style="background:#7a2a24;color:#fff">إلغاء الاشتراك</button><button data-delacct="'+esc(r.id)+'" style="background:#3a0f0c;color:#ffb4ab;border:1px solid #7a2a24">حذف الحساب</button></div>';
   }).join(''):'<div class="m">لا نتائج</div>';
   document.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>renew(b.dataset.id,+b.dataset.d));
+  document.querySelectorAll('[data-note]').forEach(b=>b.onclick=()=>editNote(b.dataset.note));
+  document.querySelectorAll('[data-msg]').forEach(b=>b.onclick=()=>copyMsg(b.dataset.msg));
+  document.querySelectorAll('[data-hist]').forEach(b=>b.onclick=()=>showHist(b.dataset.hist));
   document.querySelectorAll('[data-cancel]').forEach(b=>b.onclick=()=>cancelSub(b.dataset.cancel));
   document.querySelectorAll('[data-delacct]').forEach(b=>b.onclick=()=>deleteAcct(b.dataset.delacct));
 }
 async function load(){
   say('جارٍ التحميل…');
-  try{ vmap={}; try{ (await db.collection('appVersions').get()).docs.forEach(d=>{ vmap[d.id]=d.data(); }); }catch(_){}
+  try{ meta={}; try{ (await db.collection('adminMeta').get()).docs.forEach(d=>{ meta[d.id]=d.data(); }); }catch(_){} vmap={}; try{ (await db.collection('appVersions').get()).docs.forEach(d=>{ vmap[d.id]=d.data(); }); }catch(_){}
     const s=await db.collection('backups').get(); rows=s.docs.map(d=>{const x=d.data();return {id:d.id,email:x.ownerEmail||'',biz:x.businessName||'',exp:x.subscriptionExpiresAt==null?null:x.subscriptionExpiresAt};});
     rows.sort((a,b)=>(a.exp==null?9e15:a.exp)-(b.exp==null?9e15:b.exp)); say('عدد الحسابات: '+rows.length); draw(); }
   catch(e){ say('تعذّر التحميل: '+(e.code||e.message)+' — وثيقة admins يجب أن يكون اسمها هو UID الظاهر أعلاه تمامًا، وأن تكون القواعد الجديدة منشورة',true); }
@@ -67,14 +100,14 @@ async function renew(id,days){
   const r=rows.find(x=>x.id===id); if(!r) return;
   const val=newExpiry(r.exp,days);
   if(!confirm('تجديد '+(r.email||id)+'\nالمعرّف: '+id+'\nحتى '+fmt(val)+' ؟')) return;
-  try{ await db.collection('backups').doc(id).update({subscriptionExpiresAt:val}); r.exp=val; say('تم التجديد حتى '+fmt(val)); draw(); }
+  try{ await db.collection('backups').doc(id).update({subscriptionExpiresAt:val}); r.exp=val; say('تم التجديد حتى '+fmt(val)); draw(); logOp(id,'تجديد '+days+' يوم حتى '+fmt(val)).then(draw); }
   catch(e){ say('فشل التجديد: '+(e.code||e.message),true); }
 }
 async function cancelSub(id){
   const r=rows.find(x=>x.id===id); if(!r) return;
   if(!confirm('إلغاء اشتراك '+(r.email||id)+'\nالمعرّف: '+id+'\nالآن؟ سيُقفل التطبيق عند هذا الحساب وفريقه فورًا.')) return;
   const val=Date.now();
-  try{ await db.collection('backups').doc(id).update({subscriptionExpiresAt:val}); r.exp=val; say('تم إلغاء الاشتراك'); draw(); }
+  try{ await db.collection('backups').doc(id).update({subscriptionExpiresAt:val}); r.exp=val; say('تم إلغاء الاشتراك'); draw(); logOp(id,'إلغاء الاشتراك').then(draw); }
   catch(e){ say('فشل الإلغاء: '+(e.code||e.message),true); }
 }
 async function wipeSub(col){ for(let n=0;n<200;n++){ const q=await col.limit(300).get(); if(!q.docs.length) break; const b=db.batch(); q.docs.forEach(d=>b.delete(d.ref)); await b.commit(); if(q.docs.length<300) break; } }
@@ -93,7 +126,7 @@ async function deleteAcct(id){
     const inv=await db.collection('invites').where('ownerUid','==',id).get();
     for(const d of inv.docs){ await d.ref.delete().catch(()=>{}); }
     await w.delete();
-    await db.collection('appVersions').doc(id).delete().catch(()=>{});
+    await db.collection('appVersions').doc(id).delete().catch(()=>{}); await db.collection('adminMeta').doc(id).delete().catch(()=>{});
     rows=rows.filter(x=>x.id!==id); say('تم حذف الحساب'); draw();
   }catch(e){ say('فشل الحذف: '+(e.code||e.message),true); }
 }
@@ -117,8 +150,10 @@ async function restoreAcct(id,items){
 async function loadUpd(){
   const box=$('upd'); box.style.display='block'; box.innerHTML='<div class="m">جارٍ التحميل…</div>';
   try{
-    const [cs,vs]=await Promise.all([db.collection('config').doc('app').get(), db.collection('appVersions').get()]);
-    const c=cs.exists?cs.data():{}; const v=vs.docs.map(d=>({id:d.id,...d.data()}));
+    const [cs,vs,bs]=await Promise.all([db.collection('config').doc('app').get(), db.collection('appVersions').get(), db.collection('backups').get()]);
+    const c=cs.exists?cs.data():{}; const ownerIds={}; bs.docs.forEach(d=>{ ownerIds[d.id]=1; });
+    const allV=vs.docs.map(d=>({id:d.id,...d.data()}));
+    const v=allV.filter(x=>ownerIds[x.id]); const strays=allV.filter(x=>!ownerIds[x.id]);
     const maxB=v.reduce((m,x)=>Math.max(m,x.build||0),0);
     const by={}; v.forEach(x=>{ by[x.build||0]=(by[x.build||0]||0)+1; });
     const old=v.filter(x=>(x.build||0)<(+c.minBuild||maxB)).sort((a,b)=>(a.build||0)-(b.build||0));
@@ -134,6 +169,9 @@ async function loadUpd(){
      +'<div class="m">لا يظهر هنا من لم يفتح التطبيق بعد التحديث الذي يرسل النسخة.</div></div>'
      +'<div class="card"><b>حسابات على نسخة أقدم من الأعلى ('+behind.length+')</b>'
      +(behind.length?behind.map(x=>'<div class="m"><span class="em" style="font-size:14px">'+esc(x.email||x.id)+'</span> · نسخة '+esc(x.build||'؟')+' · آخر ظهور '+day(x)+'</div>').join(''):'<div class="m ok">الجميع على أحدث نسخة</div>')+'</div>';
+    box.innerHTML+='<div class="card"><b>أجهزة غير مرتبطة بحساب مشترك حالي ('+strays.length+')</b><div class="m">قد تكون حسابًا محذوفًا أو موظفًا/مديرًا يدخل على حساب مشترك. لا تدخل في الإحصاء أعلاه.</div>'
+     +strays.map(x=>'<div class="m"><span class="em" style="font-size:14px">'+esc(x.email||x.id)+'</span> · نسخة '+esc(x.build||'؟')+' · آخر ظهور '+day(x)+' <button class="g" data-vdel="'+esc(x.id)+'" style="padding:4px 10px">مسح السجل</button></div>').join('')+'</div>';
+    box.querySelectorAll('[data-vdel]').forEach(b=>b.onclick=async()=>{ if(!confirm('مسح سجل النسخة لهذا الجهاز فقط؟ (لا يحذف أي حساب)')) return; try{ await db.collection('appVersions').doc(b.dataset.vdel).delete(); loadUpd(); }catch(e){ alert('تعذّر: '+(e.code||e.message)); } });
     $('usave').onclick=()=>saveUpd(maxB,v.length); $('uoff').onclick=()=>saveUpd(0,v.length,true);
   }catch(e){ box.innerHTML='<div class="m bad">تعذّر التحميل: '+esc(e.code||e.message)+' — انشر قواعد Firestore الجديدة (فيها config و appVersions).</div>'; }
 }
@@ -147,12 +185,17 @@ async function saveUpd(maxB,count,off){
   catch(e){ say('فشل الحفظ: '+(e.code||e.message),true); }
 }
 function lsay(t,bad){ $('lmsg').style.color=bad?'#ff8c82':'#7ddc8a'; $('lmsg').textContent=t; }
+function lockLeft(){ try{ const u=+localStorage.getItem('adm_lock')||0; return Math.max(0,u-Date.now()); }catch(_){ return 0; } }
+$('showpw').onclick=()=>{ const i=$('pw'); const h=i.type==='password'; i.type=h?'text':'password'; $('showpw').textContent=h?'إخفاء':'إظهار'; };
+$('pw').addEventListener('keydown',e=>{ if(e.key==='Enter') $('go').click(); });
 $('go').onclick=async()=>{
+  const ll=lockLeft(); if(ll>0){ lsay('محاولات خاطئة كثيرة. حاول بعد '+Math.ceil(ll/60000)+' دقيقة.',true); return; }
   lsay('جارٍ الدخول…');
   const slow=setTimeout(()=>lsay('الدخول يستغرق وقتًا طويلًا. افتح هذه الصفحة من الحاسوب بمتصفح Chrome، وأوقف دروع Brave إن كنت تستعمله، وتأكد من الإنترنت.',true),12000);
   try{ try{ await auth.setPersistence(firebase.auth.Auth.Persistence.NONE); }catch(_){}
-    const c=await auth.signInWithEmailAndPassword($('em').value.trim(),$('pw').value); clearTimeout(slow); lsay('تم الدخول، جارٍ فتح القائمة…'); show(c.user); }
+    const c=await auth.signInWithEmailAndPassword($('em').value.trim(),$('pw').value); clearTimeout(slow); try{ localStorage.removeItem('adm_fail'); }catch(_){} lsay('تم الدخول، جارٍ فتح القائمة…'); show(c.user); }
   catch(e){ clearTimeout(slow);
+    try{ if(/invalid-credential|wrong-password|user-not-found/.test(e.code||'')){ const n=(+localStorage.getItem('adm_fail')||0)+1; localStorage.setItem('adm_fail',n); if(n>=5){ localStorage.setItem('adm_lock',Date.now()+5*60000); localStorage.setItem('adm_fail',0); } } }catch(_){}
     const hint = (e.code==='auth/invalid-credential'||e.code==='auth/wrong-password'||e.code==='auth/user-not-found') ? ' — إن كنت متأكداً من كلمة المرور، فقد تكون أُزيلت من الحساب (مثلاً بعد الدخول بجوجل بنفس البريد). اضغط «نسيت كلمة المرور؟» لإرسال رابط يعيدها.' : ' — تأكد من البريد وكلمة المرور (كلمة مرور تطبيق EjarRent وليست Gmail)';
     lsay('تعذّر الدخول: '+(e.code||e.message)+hint,true); }
 };
@@ -162,7 +205,7 @@ $('forgot').onclick=async()=>{
   catch(e){ lsay('تعذّر الإرسال: '+(e.code||e.message),true); }
 };
 function show(u){ $('login').style.display=u?'none':'block'; $('app').style.display=u?'block':'none'; if(u){ $('who').textContent='الحساب: '+(u.email||'')+'  |  UID: '+u.uid; load(); } }
-$('delbtn').onclick=loadDeleted; $('updbtn').onclick=loadUpd; $('out').onclick=()=>auth.signOut(); $('reload').onclick=load; $('q').oninput=draw;
+$('csv').onclick=exportCsv; $('delbtn').onclick=loadDeleted; $('updbtn').onclick=loadUpd; $('out').onclick=()=>auth.signOut(); $('reload').onclick=load; $('q').oninput=draw;
 auth.onAuthStateChanged(show);
 window.addEventListener('error',e=>{ try{ lsay('خطأ في الصفحة: '+e.message,true); }catch(_){} });
 </script></body></html>
