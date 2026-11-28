@@ -133,17 +133,18 @@ async function deleteAcct(id){
 async function loadDeleted(){
   const box=$('deleted'); box.style.display='block'; box.innerHTML='<div class="m">جارٍ تحميل الحسابات المحذوفة…</div>';
   try{
-    const s=await db.collection('deleted').get();
-    const items=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.at||0)-(a.at||0));
-    box.innerHTML='<div class="card"><b>الحسابات المحذوفة</b><div class="m">«استرجاع» يسمح للشخص بتسجيل الدخول من جديد بنفس بريده وكلمة مروره. يبدأ حساباً جديداً فارغاً بتجربة 8 أيام، لأن بياناته القديمة حُذفت نهائياً. لتجديد اشتراكه بعد ذلك استخدم القائمة كالمعتاد.</div></div>'
-      +(items.length?items.map(r=>'<div class="card"><div class="em">'+(r.email?esc(r.email):'(بريد غير معروف)')+'</div><div class="m">حُذف في '+(r.at?fmt(r.at):'—')+'</div><div class="m" style="direction:ltr;text-align:right">'+esc(r.id)+'</div><button data-restore="'+esc(r.id)+'" style="background:#1f6b45;color:#fff">استرجاع الحساب</button></div>').join(''):'<div class="m">لا توجد حسابات محذوفة</div>');
-    box.querySelectorAll('[data-restore]').forEach(b=>b.onclick=()=>restoreAcct(b.dataset.restore,items));
+    const [s,s2]=await Promise.all([db.collection('deleted').get(), db.collection('deletedEmails').get().catch(()=>({docs:[]}))]);
+    const items=s.docs.map(d=>({id:d.id,kind:'admin',...d.data()})).concat(s2.docs.map(d=>({id:d.id,kind:'self',email:d.id,...d.data()}))).sort((a,b)=>(b.at||0)-(a.at||0));
+    const note='«استرجاع» يسمح للشخص بالتسجيل من جديد بنفس بريده. يبدأ حساباً جديداً فارغاً بتجربة مجانية، لأن بياناته القديمة حُذفت نهائياً ولا يمكن إعادتها. الصنف «حذفه صاحبه» يعني أنه حذف حسابه بنفسه بعد انتهاء اشتراكه، و«حذفته الإدارة» يعني أنك حذفته من هنا.';
+    box.innerHTML='<div class="card"><b>الحسابات المحذوفة ('+items.length+')</b><div class="m">'+note+'</div></div>'
+      +(items.length?items.map(r=>'<div class="card"><div class="em">'+(r.email?esc(r.email):'(بريد غير معروف)')+'</div><div class="m">'+(r.kind==='self'?'حذفه صاحبه بعد انتهاء اشتراكه':'حذفته الإدارة')+' · '+(r.at?fmt(r.at):'—')+'</div>'+(r.kind==='self'?'':'<div class="m" style="direction:ltr;text-align:right">'+esc(r.id)+'</div>')+'<button data-restore="'+esc(r.id)+'" data-kind="'+r.kind+'" style="background:#1f6b45;color:#fff;margin-top:6px">استرجاع</button></div>').join(''):'<div class="m">لا توجد حسابات محذوفة.</div>');
+    box.querySelectorAll('[data-restore]').forEach(b=>b.onclick=()=>restoreAcct(b.dataset.restore,items,b.dataset.kind));
   }catch(e){ box.innerHTML='<div class="m bad">تعذّر تحميل القائمة: '+esc(e.code||e.message)+'</div>'; }
 }
-async function restoreAcct(id,items){
+async function restoreAcct(id,items,kind){
   const r=(items||[]).find(x=>x.id===id)||{id}; const label=r.email||id;
   if(!confirm('استرجاع «'+label+'»؟\nالمعرّف: '+id+'\nسيتمكن من تسجيل الدخول من جديد وبدء حساب جديد فارغ بتجربة 8 أيام.')) return;
-  try{ await db.collection('deleted').doc(id).delete(); say('تم استرجاع «'+label+'». يدخل الآن من صفحة «دخول» في التطبيق بنفس بريده وكلمة مروره.'); loadDeleted(); }
+  try{ await db.collection(kind==='self'?'deletedEmails':'deleted').doc(id).delete(); say('تم استرجاع «'+label+'». يدخل الآن من صفحة «دخول» في التطبيق بنفس بريده وكلمة مروره.'); loadDeleted(); }
   catch(e){ say('فشل الاسترجاع: '+(e.code||e.message),true); }
 }
 
